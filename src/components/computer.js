@@ -10,6 +10,10 @@ export default function SingleMode({ boardWidth }) {
   const [moveFrom, setMoveFrom] = useState('');
   const [moveSquares, setMoveSquares] = useState({});
   const [optionSquares, setOptionSquares] = useState({});
+  const pieceValue = {'p':10, 'r':50, 'n':30, 'b':30, 'q':90, 'k':900}
+  const turnChange = {'w':'b', 'b':'w'}
+  let turn = 'w';
+  let won = false;
 
   function safeGameMutate(modify) {
     setGame((g) => {
@@ -25,6 +29,7 @@ export default function SingleMode({ boardWidth }) {
       verbose: true
     });
     if (moves.length === 0) {
+      won = true;
       return;
     }
 
@@ -39,26 +44,92 @@ export default function SingleMode({ boardWidth }) {
       };
       return move;
     });
+
     newSquares[square] = {
       background: 'rgba(255, 255, 0, 0.4)'
     };
     setOptionSquares(newSquares);
   }
 
-  function makeRandomMove() {
-    const possibleMoves = game.moves();
 
-    // exit if the game is over
-    if (game.game_over() || game.in_draw() || possibleMoves.length === 0) return;
 
-    const randomIndex = Math.floor(Math.random() * possibleMoves.length);
-    safeGameMutate((game) => {
-      game.move(possibleMoves[randomIndex]);
-    });
+  function evaluate(gameboard){
+    let value = 0;
+    for (var i = 0; i < 8; i++) {
+      for (var j = 0; j < 8; j++) {
+        if(gameboard[i][j] !== null){
+         
+          if(gameboard[i][j].color === 'b'){
+            value = value + pieceValue[gameboard[i][j].type];
+          }
+          else{
+            value = value - pieceValue[gameboard[i][j].type];
+          }    
+        }
+          
+      }
+    }
+    
+    return value;
   }
 
-  function onSquareClick(square) {
+  function getBestMove(depth, game, player){
+    if(depth === 0){
+      return evaluate(game.board());
+    }
 
+    const possibleMoves = game.moves();
+
+    if(player === 'b'){
+      let max = -9999;
+      for(let i = 0; i < possibleMoves.length; i++){
+        game.move(possibleMoves[i]);
+        max = Math.max(max, getBestMove(depth - 1, game, turnChange[player]));
+        game.undo();
+      }
+      return max;
+    }
+    else{
+      let min = 9999;
+      for(let i = 0; i < possibleMoves.length; i++){
+        game.move(possibleMoves[i]);
+        min = Math.min(min, getBestMove(depth - 1, game, turnChange[player]));
+        game.undo();
+      }
+      return min;
+    }
+  }
+
+  function computerMove() {
+    const possibleMoves = game.moves();
+    
+    // exit if the game is over
+    if (game.game_over() || game.in_draw() || possibleMoves.length === 0){
+      won = true;
+      return;
+    }
+    
+    let max = -9999;
+    let moveIndex = 0;
+    for(let i = 0; i < possibleMoves.length; i++){ 
+      game.move(possibleMoves[i]);
+      let value = getBestMove(2, game, turnChange[turn]);
+      game.undo();
+      if (value >= max){
+        moveIndex = i;
+        max = value;
+      }
+    }
+    
+    safeGameMutate((game) => {
+      game.move(possibleMoves[moveIndex]);
+    });
+    console.log(evaluate(game.board()));
+    turn = 'w';
+  }
+
+ 
+  function onSquareClick(square) {
     function resetFirstMove(square) {
       setMoveFrom(square);
       getMoveOptions(square);
@@ -85,54 +156,60 @@ export default function SingleMode({ boardWidth }) {
       return;
     }
 
-    setTimeout(makeRandomMove, 300);
+    setTimeout(computerMove, 300);
     setMoveFrom('');
     setOptionSquares({});
   }
 
-  return (
-    <div>
-      <Chessboard
-        id="ClickToMove"
-        animationDuration={200}
-        arePiecesDraggable={false}
-        boardWidth={boardWidth}
-        position={game.fen()}
-        onSquareClick={onSquareClick}
-        customBoardStyle={{
-          borderRadius: '4px',
-          boxShadow: '0 5px 15px rgba(0, 0, 0, 0.5)'
-        }}
-        customSquareStyles={{
-          ...moveSquares,
-          ...optionSquares,
-        }}
-        ref={chessboardRef}
-      />
-      <button
-        className="rc-button"
-        onClick={() => {
-          safeGameMutate((game) => {
-            game.reset();
-          });
-          chessboardRef.current.clearPremoves();
-          setMoveSquares({});
-        }}
-      >
-        reset
-      </button>
-      <button
-        className="rc-button"
-        onClick={() => {
-          safeGameMutate((game) => {
-            game.undo();
-          });
-          chessboardRef.current.clearPremoves();
-          setMoveSquares({});
-        }}
-      >
-        undo
-      </button>
-    </div>
-  );
+  let res = <div className = "blur">
+  <Chessboard
+    id="vsComputer"
+    animationDuration={200}
+    arePiecesDraggable={false}
+    boardWidth={boardWidth}
+    position={game.fen()}
+    onSquareClick={onSquareClick}
+    customBoardStyle={{
+      borderRadius: '4px',
+      boxShadow: '0 5px 15px rgba(0, 0, 0, 0.5)'
+    }}
+    customSquareStyles={{
+      ...moveSquares,
+      ...optionSquares,
+    }}
+    ref={chessboardRef}
+  />
+  <button
+    className="rc-button"
+    onClick={() => {
+      safeGameMutate((game) => {
+        game.reset();
+      });
+      chessboardRef.current.clearPremoves();
+      setMoveSquares({});
+      turn = 'b';
+      won = false;
+    }}
+  >
+    reset
+  </button>
+  <button
+    className="rc-button"
+    onClick={() => {
+      safeGameMutate((game) => {
+        game.undo();
+      });
+      chessboardRef.current.clearPremoves();
+      setMoveSquares({});
+      turn = turnChange[turn];
+      won = false;
+    }}
+  >
+    undo
+  </button>
+</div>;
+
+console.log(typeof(res))
+
+return res;
 }
